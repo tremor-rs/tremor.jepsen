@@ -9,6 +9,25 @@
             [jepsen.os.debian :as debian]))
 
 (def dir "/opt/tremor")
+(def binary "bin/tremor")
+(def logfile (str dir "/tremor.log"))
+(def pidfile (str dir "/etcd.pid"))
+
+(defn node-url
+  "An HTTP url for connecting to a node on a particular port."
+  [node port]
+  (str node ":" port))
+
+(defn peer-url
+  "The HTTP url for other peers to talk to a node."
+  [node]
+  (node-url node 8080))
+
+(defn api-url
+  "The HTTP url for other peers to talk to a node."
+  [node]
+  (node-url node 9898))
+
 
 (defn db
   "Tremor for a particular version."
@@ -18,9 +37,27 @@
       (info node "installing /opt/tremor" version)
       (c/su
        (let
-        ; [url (str "https://github.com/tremor-rs/tremor-runtime/releases/download/v" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
+         ;[url (str "https://github.com/tremor-rs/tremor-runtime/releases/download/v" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
         [url (str "file:///var/packages/" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
-         (cu/install-archive! url dir))))
+         (cu/install-archive! url dir))
+       (apply
+        cu/start-daemon!
+        (concat
+         [{:logfile logfile
+           :pidfile pidfile
+           :chdir   dir}
+          binary
+          :--instance (+ (.indexOf (:nodes test) node) 1)
+          :server
+          :run
+          :-p pidfile
+          :--cluster-host  (peer-url node)
+          :--api-host (api-url node)]
+         (map (fn [node] [:--cluster-peer (peer-url node)])
+              (filter #(not= node %1) (:nodes test)))
+         (if (= node (first (:nodes test)))
+           [:--cluster-bootstrap]
+           [:--cluster-peer (peer-url (first (:nodes test)))])))))
     (teardown! [_ test node]
       (info node "tearing down /opt/tremor"))))
 
@@ -41,10 +78,8 @@
   [node port]
   (str node ":" port))
 
-(defn peer-url
-  "The HTTP url for other peers to talk to a node."
-  [node]
-  (node-url node 8080))
+
+
 
 (defn client-url
   "The HTTP url clients use to talk to a node."
@@ -54,16 +89,13 @@
 (defn initial-cluster
   "Constructs an initial cluster string for a test, like
   \"foo=foo:2380,bar=bar:2380,...\""
-  [test]
-  (->> (:nodes test)
-       (map (fn [node]
-              (str node "=" (peer-url node))))
-       (str/join ",")))
+  [this-node test]
+  (str "--cluster-peer " (first (:nodes test)))
+  (->>  (:nodes test)
+        (map (fn [node]
+               (str node "=" (peer-url node))))
+        (str/join ",")))
 
-(def dir     "/opt/tremor")
-(def binary "tremor")
-(def logfile (str dir "/var/log/tremor/tremor.log"))
-(def pidfile (str dir "/etcd.pid"))
 
 (defn -main
   "Handles command line arguments. Can either run a test, or a web server for
