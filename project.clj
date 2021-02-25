@@ -5,6 +5,8 @@
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [jepsen "0.2.1-SNAPSHOT"]
+                 [clj-http "3.12.1"]
+                 [cheshire "5.9.0"]
                  [verschlimmbesserung "0.1.3"]]
   :main tremor.jepsen
   :repl-options {:init-ns tremor.jepsen})
