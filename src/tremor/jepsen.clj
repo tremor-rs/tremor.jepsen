@@ -1,9 +1,12 @@
 (ns tremor.jepsen
   (:require [clojure.tools.logging :refer :all]
             [clojure.string :as str]
+            [clj-http.client :as http]
             [jepsen [cli :as cli]
+             [client :as client]
              [control :as c]
              [db :as db]
+             [generator :as gen]
              [tests :as tests]]
             [jepsen.control.util :as cu]
             [jepsen.os.debian :as debian]))
@@ -27,7 +30,6 @@
   "The HTTP url for other peers to talk to a node."
   [node]
   (node-url node 9898))
-
 
 (defn db
   "Tremor for a particular version."
@@ -71,6 +73,61 @@
     (teardown! [_ test node]
       (info node "tearing down /opt/tremor"))))
 
+(defn client-url
+  "The HTTP url clients use to talk to a node."
+  [node]
+  (str "http://" (node-url node 9898) "/"))
+
+
+(defn r   [_ _] {:type :invoke, :f :read, :value nil})
+(defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
+
+
+(defn decode-body [body]
+  (if (= body "not found")
+    nil
+    (Long/parseLong body)))
+
+(defn tremor-get [url path]
+  (let [endpoint (str url "kv/" path)
+        r (http/get endpoint {:accept :json :as :json})]
+    (info "GET: " endpoint)
+    {:body (decode-body (:body r))
+     :status (:status r)}))
+
+(defn tremor-put [url path val]
+  (let [endpoint (str url "kv/" path)
+        r (http/post
+           endpoint
+           {:form-params {:value (str val)}
+            :as :json
+            :content-type :json
+            :accept :json})]
+    (info "POST: " endpoint)
+    {:body (decode-body (:body r))
+     :status (:status r)}))
+
+
+(defrecord Client [conn]
+  client/Client
+  (open! [this test node]
+    (assoc this :url (client-url node)))
+
+  (setup! [this test])
+
+  (invoke! [this test op]
+    (case (:f op)
+      :read (assoc
+             op
+             :type :ok
+             :value (:body (tremor-get (:url this) "snot")))
+      :write (do
+               (tremor-put (:url this) "snot" (:value op))
+               (assoc op :type :ok))))
+
+  (teardown! [this test])
+
+  (close! [_ test]))
 
 (defn tremor-test
   "Given an options map from the command line runner (e.g. :nodes, :ssh,
@@ -78,20 +135,21 @@
   [opts]
   (merge tests/noop-test
          opts
-         {:name "tremor"
+         {:pure-generators true
+          :name "tremor"
           :os   debian/os
           :db   (db "0.9.5-rc.2")
-          :pure-generators true}))
+          :client (Client. nil)
+          :generator       (->> (gen/mix [r w])
+                                (gen/stagger 1)
+                                (gen/nemesis nil)
+                                (gen/time-limit 15))}))
 
 (defn node-url
   "An HTTP url for connecting to a node on a particular port."
   [node port]
   (str node ":" port))
 
-(defn client-url
-  "The HTTP url clients use to talk to a node."
-  [node]
-  (node-url node 8080))
 
 ;; (defn initial-cluster
 ;;   "Constructs an initial cluster string for a test, like
