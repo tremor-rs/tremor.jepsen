@@ -2,14 +2,36 @@
   (:require [clojure.tools.logging :refer :all]
             [clojure.string :as str]
             [clj-http.client :as http]
-            [jepsen [cli :as cli]
+            [jepsen [checker :as checker]
+             [cli :as cli]
              [client :as client]
              [control :as c]
              [db :as db]
              [generator :as gen]
              [tests :as tests]]
             [jepsen.control.util :as cu]
-            [jepsen.os.debian :as debian]))
+            [jepsen.os.debian :as debian]
+            [knossos.model :as model]
+            [slingshot.slingshot :refer [try+]]
+            [verschlimmbesserung.core :as v]))
+
+
+
+;; (ns tremor.jepsen
+;;   (:require [clojure.tools.logging :refer :all]
+;;             [clojure.string :as str]
+;;             [clj-http.client :as http]
+;;             [jepsen
+;;              [checker :as checker]
+;;              [cli :as cli]
+;;              [client :as client]
+;;              [control :as c]
+;;              [db :as db]
+;;              [generator :as gen]
+;;              [tests :as tests]]
+;;             [jepsen.control.util :as cu]
+;;             [knossos.model :as model]
+;;             [jepsen.os.debian :as debian]))
 
 (def dir "/opt/tremor")
 (def binary "bin/tremor")
@@ -140,6 +162,9 @@
           :os   debian/os
           :db   (db "0.9.5-rc.2")
           :client (Client. nil)
+          :checker         (checker/linearizable
+                            {:model     (model/cas-register)
+                             :algorithm :linear})
           :generator       (->> (gen/mix [r w])
                                 (gen/stagger 1)
                                 (gen/nemesis nil)
