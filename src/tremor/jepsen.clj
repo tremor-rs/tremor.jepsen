@@ -166,9 +166,9 @@
                             {:model     (model/cas-register)
                              :algorithm :linear})
           :generator       (->> (gen/mix [r w])
-                                (gen/stagger 1)
+                                (gen/stagger 0.1)
                                 (gen/nemesis nil)
-                                (gen/time-limit 15))}))
+                                (gen/time-limit 30))}))
 
 (defn node-url
   "An HTTP url for connecting to a node on a particular port."
