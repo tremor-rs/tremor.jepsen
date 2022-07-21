@@ -43,7 +43,7 @@
   [node port]
   (str node ":" port))
 
-(defn peer-url
+(defn rpc-url
   "The HTTP url for other peers to talk to a node."
   [node]
   (node-url node 8080))
@@ -74,24 +74,13 @@
            [{:logfile logfile
              :pidfile pidfile
              :chdir   dir}
-            binary
-            :--instance node-id
-            :server
-            :run
-            :-p pidfile
-            :--cluster-host  (peer-url node)
-            :--api-host (api-url node)]
-           (map (fn [node] [:--cluster-peer (peer-url node)])
-                (filter #(not= node %1) (:nodes test)))
+            binary]
            (if is-first
-             [:--cluster-bootstrap]
-             [:--cluster-peer (peer-url first-node)]))))
-        (if (not is-first)
-          (do
-            (c/exec "/bin/sleep" (* 2 node-id)) ;; FIXME this is really bad :tm:
-            (info node "running" (str "/usr/bin/curl -vv -XPOST" (str  " http://" (api-url first-node) "/cluster/" node-id)))
-            (c/exec "/usr/bin/curl" :-vv  :-XPOST (str  "http://" (api-url first-node) "/cluster/" node-id)))
-          ())))
+             [:init]
+             [:join :--leader (api-url first-node)])
+           [:--db-dir pidfile
+            :--rpc  (rpc-url node)
+            :--api (api-url node)])))))
     (teardown! [_ test node]
       (info node "tearing down /opt/tremor"))))
 

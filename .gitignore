@@ -13,3 +13,6 @@ pom.xml.asc
 store
 .clj-kondo
 .lsp
+
+# generated
+docker/docker-compose.yml
