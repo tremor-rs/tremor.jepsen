@@ -17,7 +17,9 @@
     (setup! [_ test node]
       (info node "installing /opt/tremor" version)
       (c/su
-       (let [url (str "https://github.com/tremor-rs/tremor-runtime/releases/download/v" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
+       (let
+        ; [url (str "https://github.com/tremor-rs/tremor-runtime/releases/download/v" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
+        [url (str "file:///var/packages/" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
          (cu/install-archive! url dir))))
     (teardown! [_ test node]
       (info node "tearing down /opt/tremor"))))
@@ -37,7 +39,7 @@
 (defn node-url
   "An HTTP url for connecting to a node on a particular port."
   [node port]
-  (str "http://" node ":" port))
+  (str node ":" port))
 
 (defn peer-url
   "The HTTP url for other peers to talk to a node."
