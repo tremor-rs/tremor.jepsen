@@ -1,6 +1,7 @@
 (ns tremor.jepsen
   (:require [clojure.tools.logging :refer :all]
             [clojure.string :as str]
+            [clojure.data.json :as json]
             [clj-http.client :as http]
             [jepsen [checker :as checker]
              [cli :as cli]
@@ -12,8 +13,7 @@
             [jepsen.control.util :as cu]
             [jepsen.os.debian :as debian]
             [knossos.model :as model]
-            [slingshot.slingshot :refer [try+]]
-            [verschlimmbesserung.core :as v]))
+            [slingshot.slingshot :refer [try+]]))
 
 
 
@@ -66,28 +66,35 @@
         (c/su
          (let
          ;[url (str "https://github.com/tremor-rs/tremor-runtime/releases/download/v" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
-          [url (str "file:///var/packages/" version "/tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
+          [url (str "file:///var/packages/" "tremor-" version "-x86_64-unknown-linux-gnu.tar.gz")]
            (cu/install-archive! url dir))
+         ; stagger the joins
+         (Thread/sleep (* (- node-id 1) 1000))
          (apply
           cu/start-daemon!
           (concat
            [{:logfile logfile
              :pidfile pidfile
              :chdir   dir}
-            binary]
+            binary
+            :cluster]
            (if is-first
              [:init]
              [:join :--leader (api-url first-node)])
-           [:--db-dir pidfile
+           [:--db-dir "/opt/tremor/db"
             :--rpc  (rpc-url node)
-            :--api (api-url node)])))))
+            :--api (api-url node)]))
+         (Thread/sleep 5000))))
     (teardown! [_ test node]
-      (info node "tearing down /opt/tremor"))))
+      (info node "tearing down /opt/tremor")
+      (cu/stop-daemon! binary pidfile)
+      (c/su (cu/grepkill! :tremor)
+            (c/exec :rm :-rf "/opt/tremor/db")))))
 
 (defn client-url
   "The HTTP url clients use to talk to a node."
   [node]
-  (str "http://" (node-url node 9898) "/"))
+  (str "http://" (api-url node) "/"))
 
 
 (defn r   [_ _] {:type :invoke, :f :read, :value nil})
@@ -95,27 +102,39 @@
 
 
 (defn decode-body [body]
-  (if (= body "not found")
-    nil
-    (Long/parseLong body)))
+  (let [v (:Ok body)]
+    (info "v: " v "body:" body)
+    (if (or (= v "") (= v nil))
+      nil
+      (Long/parseLong v))))
 
-(defn tremor-get [url path]
-  (let [endpoint (str url "kv/" path)
-        r (http/get endpoint {:accept :json :as :json})]
-    (info "GET: " endpoint)
+
+(defn tremor-get [url key]
+  (let [endpoint (str url "api/consistent_read")
+        body (json/write-str key)
+        _ (info "POST: " endpoint body)
+        r (http/post endpoint {:body body
+                               :as :json
+                               :content-type :json
+                               :accept :json})]
+    (info "=> " (:body r))
     {:body (decode-body (:body r))
      :status (:status r)}))
 
-(defn tremor-put [url path val]
-  (let [endpoint (str url "kv/" path)
+(defn tremor-put [url key val]
+  (let [endpoint (str url "api/write")
+        val (json/write-str val)
+        body (json/write-str {:Set {:key key :value val}})
+        _ (info "POST: " endpoint body)
         r (http/post
            endpoint
-           {:form-params {:value (str val)}
+           {:body body
             :as :json
             :content-type :json
             :accept :json})]
-    (info "POST: " endpoint)
-    {:body (decode-body (:body r))
+    (info "=> " (:body r))
+    {; we currently don't return a body
+     ;:body (decode-body (:body r))
      :status (:status r)}))
 
 
@@ -128,10 +147,12 @@
 
   (invoke! [this test op]
     (case (:f op)
-      :read (assoc
-             op
-             :type :ok
-             :value (:body (tremor-get (:url this) "snot")))
+      :read (let [value (:body (tremor-get (:url this) "snot"))
+                  _ (info "value:" value)]
+              (assoc
+               op
+               :type :ok
+               :value value))
       :write (do
                (tremor-put (:url this) "snot" (:value op))
                (assoc op :type :ok))))
@@ -149,7 +170,7 @@
          {:pure-generators true
           :name "tremor"
           :os   debian/os
-          :db   (db "0.9.5-rc.2")
+          :db   (db "0.12.4")
           :client (Client. nil)
           :checker         (checker/linearizable
                             {:model     (model/cas-register)
