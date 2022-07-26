@@ -102,15 +102,15 @@
 
 
 (defn decode-body [body]
-  (let [v (:Ok body)]
-    (info "v: " v "body:" body)
-    (if (or (= v "") (= v nil))
-      nil
-      (Long/parseLong v))))
+  (info "body:" body)
+  (if (= body nil)
+    nil
+    (Long/parseLong body)))
 
 
 (defn tremor-get [url key]
   (let [endpoint (str url "api/consistent_read")
+        ; endpoint (str url "api/read")
         body (json/write-str key)
         _ (info "POST: " endpoint body)
         r (http/post endpoint {:body body
