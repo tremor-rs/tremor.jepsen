@@ -79,8 +79,8 @@
             binary
             :cluster]
            (if is-first
-             [:init]
-             [:join :--leader (api-url first-node)])
+             [:bootstrap]
+             [:start :--join (api-url first-node)])
            [:--db-dir "/opt/tremor/db"
             :--rpc  (rpc-url node)
             :--api (api-url node)]))
@@ -109,7 +109,7 @@
 
 
 (defn tremor-get [url key]
-  (let [endpoint (str url "api/consistent_read")
+  (let [endpoint (str url "api/read")
         ; endpoint (str url "api/read")
         body (json/write-str key)
         _ (info "POST: " endpoint body)
@@ -124,7 +124,7 @@
 (defn tremor-put [url key val]
   (let [endpoint (str url "api/write")
         val (json/write-str val)
-        body (json/write-str {:Set {:key key :value val}})
+        body (json/write-str {:key key :value val})
         _ (info "POST: " endpoint body)
         r (http/post
            endpoint
@@ -170,7 +170,7 @@
          {:pure-generators true
           :name "tremor"
           :os   debian/os
-          :db   (db "0.12.4")
+          :db   (db "0.13.0-rc.2")
           :client (Client. nil)
           :checker         (checker/linearizable
                             {:model     (model/cas-register)
