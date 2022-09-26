@@ -9,11 +9,13 @@
              [control :as c]
              [db :as db]
              [generator :as gen]
+             [nemesis :as nemesis]
              [tests :as tests]]
             [jepsen.control.util :as cu]
             [jepsen.os.debian :as debian]
+            [jepsen.checker.timeline :as timeline]
             [knossos.model :as model]
-            [slingshot.slingshot :refer [try+]]))
+            [slingshot.slingshot :refer [try+ throw+]]))
 
 
 
@@ -75,7 +77,8 @@
           (concat
            [{:logfile logfile
              :pidfile pidfile
-             :chdir   dir}
+             :chdir   dir
+             :env {:RUST_LOG "info,tarpc=warn"}}
             binary
             :cluster]
            (if is-first
@@ -89,7 +92,10 @@
       (info node "tearing down /opt/tremor")
       (cu/stop-daemon! binary pidfile)
       (c/su (cu/grepkill! :tremor)
-            (c/exec :rm :-rf "/opt/tremor/db")))))
+            (c/exec :rm :-rf "/opt/tremor/db")))
+    db/LogFiles
+    (log-files [_ test node]
+      [logfile])))
 
 (defn client-url
   "The HTTP url clients use to talk to a node."
@@ -109,53 +115,75 @@
 
 
 (defn tremor-get [url key]
-  (let [endpoint (str url "api/read")
+  (let [endpoint (str url "api/consistent_read")
         ; endpoint (str url "api/read")
         body (json/write-str key)
         _ (info "POST: " endpoint body)
-        r (http/post endpoint {:body body
-                               :as :json
-                               :content-type :json
-                               :accept :json})]
-    (info "=> " (:body r))
-    {:body (decode-body (:body r))
-     :status (:status r)}))
+        r (try+ (let [response (http/post endpoint {:body body
+                                                    :as :json
+                                                    :content-type :json
+                                                    :accept :json
+                                                    :socket-timeout 5000
+                                                    :connection-timeout 5000})] {:type :ok :value (decode-body (:body response))})
+                (catch [:status 503] {:keys [request-time body]}
+                  (error "503 Service Unavailable" request-time body)
+                  {:type :fail :body body :status 503}) ; this is only thrown when the node knows it doesn't have a leader/quorum
+                (catch [:status 500] {:keys [request-time body]}
+                  (error "500 Internal Server Error" request-time body)
+                  {:type :info :body body :status 500}) ; we don't know if the write took place or not
+                (catch java.net.SocketTimeoutException _ (error "Read Timed out") {:type :info :error :timeout})
+                (catch java.net.ConnectException _ (error "Connection refused") {:type :fail :error :conn})
+                (catch Exception x (error "Error reading a value" x) (throw+)))]
+    (info "=> " r)
+    r))
 
 (defn tremor-put [url key val]
   (let [endpoint (str url "api/write")
         val (json/write-str val)
         body (json/write-str {:key key :value val})
         _ (info "POST: " endpoint body)
-        r (http/post
-           endpoint
-           {:body body
-            :as :json
-            :content-type :json
-            :accept :json})]
-    (info "=> " (:body r))
-    {; we currently don't return a body
-     ;:body (decode-body (:body r))
-     :status (:status r)}))
+        r (try+ (let [response (http/post
+                                endpoint
+                                {:body body
+                                 :as :json
+                                 :content-type :json
+                                 :accept :json
+                                 :socket-timeout 5000      ;; in milliseconds
+                                 :connection-timeout 5000  ;; in milliseconds
+                                 })]{:type :ok :body (:body response)})
+                (catch [:status 503] {:keys [request-time body]}
+                  (error "503 Service Unavailable" request-time body)
+                  {:type :fail :body body :status 503}) ; this is only thrown when the node knows it doesn't have a leader/quorum
+                (catch [:status 500] {:keys [request-time body]}
+                  (error "500 Internal Server Error" request-time body)
+                  {:type :info :body body :status 503}) ; we don't know if the write took place or not
+                (catch java.net.SocketTimeoutException _
+                  (error "Write Timed out")
+                  {:type :info :error :timeout}) ; we don't know if the write took place or not
+                (catch java.net.ConnectException _
+                  (error "Connection refused")
+                  {:type :fail :error :conn}) ; we know the write didnt take place
+                (catch Exception x
+                  (error "Error writing a value" x)
+                  (throw+)))] ; we cannot know if the write succeeded or not
+    (info "=> " r)
+    r))
 
 
 (defrecord Client [conn]
   client/Client
   (open! [this test node]
-    (assoc this :url (client-url node)))
+    (assoc this :url (client-url node) :node node))
 
   (setup! [this test])
 
   (invoke! [this test op]
     (case (:f op)
-      :read (let [value (:body (tremor-get (:url this) "snot"))
-                  _ (info "value:" value)]
-              (assoc
-               op
-               :type :ok
-               :value value))
+      :read (let [res (tremor-get (:url this) "snot")]
+              (merge op res {:node (:node this)}))
       :write (do
-               (tremor-put (:url this) "snot" (:value op))
-               (assoc op :type :ok))))
+               (let [result (tremor-put (:url this) "snot" (:value op))]
+                 (merge op result {:node (:node this)})))))
 
   (teardown! [this test])
 
@@ -172,13 +200,16 @@
           :os   debian/os
           :db   (db "0.13.0-rc.2")
           :client (Client. nil)
-          :checker         (checker/linearizable
-                            {:model     (model/cas-register)
-                             :algorithm :linear})
+          :checker         (checker/compose {:perf (checker/perf)
+                                             :linear (checker/linearizable
+                                                      {:model     (model/register)
+                                                       :algorithm :linear})
+                                             :timeline (timeline/html)})
           :generator       (->> (gen/mix [r w])
                                 (gen/stagger 0.1)
-                                (gen/nemesis nil)
-                                (gen/time-limit 30))}))
+                                (gen/nemesis (cycle [(gen/sleep 5) {:type :info :f :start} (gen/sleep 5) {:type :info :f :stop}]))
+                                (gen/time-limit 30))
+          :nemesis    (nemesis/partition-random-halves)}))
 
 (defn node-url
   "An HTTP url for connecting to a node on a particular port."

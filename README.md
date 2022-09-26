@@ -36,6 +36,10 @@ Start the docker test environment
 
 ```bash
 ./docker/bin/console
+# make the node host keys known to the console machine
+rm -rf ~/.ssh/known_hosts
+for node in $(echo "n1 n2 n3 n4 n5"); do ssh -oStrictHostKeyChecking=no $node echo "alrighty"; done
+# run the jepsen test
 lein run test
 ```
 
