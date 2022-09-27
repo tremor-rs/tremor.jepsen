@@ -16,26 +16,7 @@
             [jepsen.os.debian :as debian]
             [jepsen.checker.timeline :as timeline]
             [knossos.model :as model]
-            [slingshot.slingshot :refer [try+ throw+]]
-            [jepsen.independent :as independent]))
-
-
-
-;; (ns tremor.jepsen
-;;   (:require [clojure.tools.logging :refer :all]
-;;             [clojure.string :as str]
-;;             [clj-http.client :as http]
-;;             [jepsen
-;;              [checker :as checker]
-;;              [cli :as cli]
-;;              [client :as client]
-;;              [control :as c]
-;;              [db :as db]
-;;              [generator :as gen]
-;;              [tests :as tests]]
-;;             [jepsen.control.util :as cu]
-;;             [knossos.model :as model]
-;;             [jepsen.os.debian :as debian]))
+            [slingshot.slingshot :refer [try+ throw+]]))
 
 (def dir "/opt/tremor")
 (def binary "bin/tremor")
@@ -227,17 +208,6 @@
   "An HTTP url for connecting to a node on a particular port."
   [node port]
   (str node ":" port))
-
-
-;; (defn initial-cluster
-;;   "Constructs an initial cluster string for a test, like
-;;   \"foo=foo:2380,bar=bar:2380,...\""
-;;   [this-node test]
-;;   (str "--cluster-peer " (first (:nodes test)))
-;;   (->>  (:nodes test)
-;;         (map (fn [node]
-;;                (str node "=" (peer-url node))))
-;;         (str/join ",")))
 
 (def cli-opts
   "tremor-test command line options"
