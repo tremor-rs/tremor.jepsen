@@ -98,8 +98,8 @@
 
 
 (defn tremor-get [url key]
-  (let [endpoint (str url "api/consistent_read")
-        ; endpoint (str url "api/read")
+  (let [endpoint (str url "api/consistent_read") ; this is the correct endpoint for reading, as it goes through the leader
+                                                 ; which is the way to interface with a raft cluster from a client
         body (json/write-str key)
         _ (info "POST: " endpoint body)
         r (try+ (let [response (http/post endpoint {:body body
