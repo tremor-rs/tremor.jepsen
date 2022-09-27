@@ -9,13 +9,15 @@
              [control :as c]
              [db :as db]
              [generator :as gen]
+             [independent :as independent]
              [nemesis :as nemesis]
              [tests :as tests]]
             [jepsen.control.util :as cu]
             [jepsen.os.debian :as debian]
             [jepsen.checker.timeline :as timeline]
             [knossos.model :as model]
-            [slingshot.slingshot :refer [try+ throw+]]))
+            [slingshot.slingshot :refer [try+ throw+]]
+            [jepsen.independent :as independent]))
 
 
 
@@ -127,13 +129,11 @@
                                                     :connection-timeout 5000})] {:type :ok :value (decode-body (:body response))})
                 (catch [:status 503] {:keys [request-time body]}
                   (error "503 Service Unavailable" request-time body)
-                  {:type :fail :body body :status 503}) ; this is only thrown when the node knows it doesn't have a leader/quorum
+                  {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch [:status 500] {:keys [request-time body]}
                   (error "500 Internal Server Error" request-time body)
-                  {:type :info :body body :status 500}) ; we don't know if the write took place or not
-                (catch java.net.SocketTimeoutException _ (error "Read Timed out") {:type :info :error :timeout})
-                (catch java.net.ConnectException _ (error "Connection refused") {:type :fail :error :conn})
-                (catch Exception x (error "Error reading a value" x) (throw+)))]
+                  {:type :fail :body body :status 500 :error :server-error})
+                (catch Exception x (error "Error reading a value" x) {:type :fail :error (. x toString)}))]
     (info "=> " r)
     r))
 
@@ -178,12 +178,15 @@
   (setup! [this test])
 
   (invoke! [this test op]
-    (case (:f op)
-      :read (let [res (tremor-get (:url this) "snot")]
-              (merge op res {:node (:node this)}))
-      :write (do
-               (let [result (tremor-put (:url this) "snot" (:value op))]
-                 (merge op result {:node (:node this)})))))
+    (let [[key value] (:value op)]
+      (case (:f op)
+        :read (let [res (tremor-get (:url this) (str key))
+                    value (:value res)
+                    indep_res (merge res {:value (independent/tuple key value) :node (:node this)})]
+                (merge op indep_res))
+        :write (do
+                 (let [result (tremor-put (:url this) (str key) value)]
+                   (merge op result {:node (:node this)}))))))
 
   (teardown! [this test])
 
@@ -201,14 +204,23 @@
           :db   (db "0.13.0-rc.2")
           :client (Client. nil)
           :checker         (checker/compose {:perf (checker/perf)
-                                             :linear (checker/linearizable
-                                                      {:model     (model/register)
-                                                       :algorithm :linear})
-                                             :timeline (timeline/html)})
-          :generator       (->> (gen/mix [r w])
-                                (gen/stagger 0.1)
-                                (gen/nemesis (cycle [(gen/sleep 5) {:type :info :f :start} (gen/sleep 5) {:type :info :f :stop}]))
-                                (gen/time-limit 30))
+                                             :indep (independent/checker
+                                                     (checker/compose
+                                                      {:linear (checker/linearizable {:model     (model/register)
+                                                                                      :algorithm :linear})
+                                                       :timeline (timeline/html)}))})
+          :generator       (->> (independent/concurrent-generator
+                                 10
+                                 (range)
+                                 (fn [key] (->> (gen/mix [r w])
+                                                (gen/stagger (/ (:rate opts)))
+                                                (gen/limit (:ops-per-key opts)))))
+                                (gen/nemesis
+                                 (cycle [(gen/sleep 5)
+                                         {:type :info :f :start}
+                                         (gen/sleep 5)
+                                         {:type :info :f :stop}]))
+                                (gen/time-limit (:time-limit opts)))
           :nemesis    (nemesis/partition-random-halves)}))
 
 (defn node-url
@@ -227,12 +239,16 @@
 ;;                (str node "=" (peer-url node))))
 ;;         (str/join ",")))
 
+(def cli-opts
+  "tremor-test command line options"
+  [["-r" "--rate HZ" "approximate number of requests per second, per thread" :default 10 :parse-fn read-string :validate [#(and (number? %) (pos? %)) "Must be a positive number"]]
+   [nil "--ops-per-key NUM" "Maximum number of operations on any given key." :default 100 :parse-fn parse-long :validate [pos? "Must be a positive integer."]]])
 
 (defn -main
   "Handles command line arguments. Can either run a test, or a web server for
   browsing results."
   [& args]
-  (cli/run! (merge (cli/single-test-cmd {:test-fn tremor-test})
+  (cli/run! (merge (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
                    (cli/serve-cmd))
             args))
 

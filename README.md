@@ -39,8 +39,8 @@ Start the docker test environment
 # make the node host keys known to the console machine
 rm -rf ~/.ssh/known_hosts
 for node in $(echo "n1 n2 n3 n4 n5"); do ssh -oStrictHostKeyChecking=no $node echo "alrighty"; done
-# run the jepsen test
-lein run test
+# run the jepsen test, use --help to see all the available options
+lein run test --rate 100 --concurrency 20 --time-limit 30
 ```
 
 ## License
