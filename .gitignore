@@ -16,3 +16,4 @@ store
 
 # generated
 docker/docker-compose.yml
+bin

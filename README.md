@@ -1,10 +1,10 @@
 # tremor.jepsen
 
 This repository adds support to tremor for the Jepsen test harness
-for clustered tremor. Currently the source targets the RAFT consensus
+for clustered tremor. Currently, the source targets the RAFT consensus
 layer of tremor which is under development.
 
-The docker environment sets up a jepsen console and 5 nodes for
+The docker environment sets up a Jepsen console and 5 nodes for
 conducting test runs.
 
 ## Prerequisites
@@ -19,20 +19,20 @@ On Linux
 On Mac OS X
 - `brew install bash`
   - so that the `docker/bin/up` and `docker/bin/console` scripts use a
-    more up-to-date bash version ( required by jepsen up script ).
+    more up-to-date bash version ( required by Jepsen up script ).
 
 ## Usage
 
 Jepsen tests for tremor
 
-### Start jepsen environment with 5 logical nodes
+### Start Jepsen environment with 5 logical nodes
 
 Start the docker test environment
 ```bash
 ./docker/bin/up --dev
 ```
 
-### Once 5 nodes have started, run jepsen test phase
+### Once 5 nodes have started, run Jepsen test phase
 
 ```bash
 ./docker/bin/console

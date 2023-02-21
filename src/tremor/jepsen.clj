@@ -182,7 +182,7 @@
          {:pure-generators true
           :name "tremor"
           :os   debian/os
-          :db   (db "0.13.0-rc.2")
+          :db   (db "0.13.0-rc.11")
           :client (Client. nil)
           :checker         (checker/compose {:perf (checker/perf)
                                              :indep (independent/checker
