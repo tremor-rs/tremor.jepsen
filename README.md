@@ -41,6 +41,10 @@ rm -rf ~/.ssh/known_hosts
 for node in $(echo "n1 n2 n3 n4 n5"); do ssh -oStrictHostKeyChecking=no $node echo "alrighty"; done
 # run the jepsen test, use --help to see all the available options
 lein run test --rate 100 --concurrency 20 --time-limit 30
+
+#or
+
+lein run test --rate 100 --concurrency 10 --time-limit 30
 ```
 
 ## License

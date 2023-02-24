@@ -8,7 +8,7 @@ x-node:
   privileged: true
   tty: true
   tmpfs:
-    #- /run:size=100M
+    - /run:size=100M
     - /run/lock:size=100M
   volumes:
     - "/sys/fs/cgroup:/sys/fs/cgroup:ro"

@@ -1,6 +1,7 @@
 (ns tremor.jepsen
-  (:require [clojure.tools.logging :refer :all]
+  (:require [clojure.tools.logging :refer [info error]]
             [clojure.string :as str]
+            [clojure.core.match :refer [match]]
             [clojure.data.json :as json]
             [clj-http.client :as http]
             [jepsen [checker :as checker]
@@ -91,14 +92,25 @@
 
 
 (defn decode-body [body]
-  (info "body:" body)
-  (if (= body nil)
-    nil
-    (Long/parseLong body)))
+  (info "body:" (str body))
+
+  (match body
+    {:value nil} nil
+    {:value _} (Long/parseLong (:value body))
+    nil nil
+    _ (Long/parseLong (:value body)))
+  ;; (try
+  ;;   (Long/parseLong body)
+  ;;   (catch Exception _
+  ;;     nil))
+  ;; (if (or (= body {:value nil}) (= body nil))
+  ;;   nil
+  ;;   (Long/parseLong body))
+  )
 
 
 (defn tremor-get [url key]
-  (let [endpoint (str url "api/consistent_read") ; this is the correct endpoint for reading, as it goes through the leader
+  (let [endpoint (str url "v1/api/kv/consistent_read") ; this is the correct endpoint for reading, as it goes through the leader
                                                  ; which is the way to interface with a raft cluster from a client
         body (json/write-str key)
         _ (info "POST: " endpoint body)
@@ -107,19 +119,26 @@
                                                     :content-type :json
                                                     :accept :json
                                                     :socket-timeout 5000
-                                                    :connection-timeout 5000})] {:type :ok :value (decode-body (:body response))})
+                                                    :connection-timeout 5000})]
+                  {:type :ok :value (decode-body (:body response))})
                 (catch [:status 503] {:keys [request-time body]}
                   (error "503 Service Unavailable" request-time body)
                   {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch [:status 500] {:keys [request-time body]}
                   (error "500 Internal Server Error" request-time body)
                   {:type :fail :body body :status 500 :error :server-error})
+                (catch java.net.SocketTimeoutException _
+                  (error "Write Timed out")
+                  {:type :info :error :timeout}) ; we don't know if the write took place or not
+                (catch java.net.ConnectException _
+                  (error "Connection refused")
+                  {:type :fail :error :conn}) ; we know the write didnt take place
                 (catch Exception x (error "Error reading a value" x) {:type :fail :error (. x toString)}))]
     (info "=> " r)
     r))
 
 (defn tremor-put [url key val]
-  (let [endpoint (str url "api/write")
+  (let [endpoint (str url "v1/api/kv/write")
         val (json/write-str val)
         body (json/write-str {:key key :value val})
         _ (info "POST: " endpoint body)
@@ -131,13 +150,14 @@
                                  :accept :json
                                  :socket-timeout 5000      ;; in milliseconds
                                  :connection-timeout 5000  ;; in milliseconds
-                                 })]{:type :ok :body (:body response)})
+                                 })]
+                                 {:type :ok :body (:body response)})
                 (catch [:status 503] {:keys [request-time body]}
                   (error "503 Service Unavailable" request-time body)
                   {:type :fail :body body :status 503}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch [:status 500] {:keys [request-time body]}
                   (error "500 Internal Server Error" request-time body)
-                  {:type :info :body body :status 503}) ; we don't know if the write took place or not
+                  {:type :fail :body body :status 500 :error :server-error}) ; we don't know if the write took place or not
                 (catch java.net.SocketTimeoutException _
                   (error "Write Timed out")
                   {:type :info :error :timeout}) ; we don't know if the write took place or not
