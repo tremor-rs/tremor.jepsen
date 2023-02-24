@@ -154,10 +154,10 @@
                                  {:type :ok :body (:body response)})
                 (catch [:status 503] {:keys [request-time body]}
                   (error "503 Service Unavailable" request-time body)
-                  {:type :fail :body body :status 503}) ; this is only thrown when the node knows it doesn't have a leader/quorum
+                  {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch [:status 500] {:keys [request-time body]}
                   (error "500 Internal Server Error" request-time body)
-                  {:type :fail :body body :status 500 :error :server-error}) ; we don't know if the write took place or not
+                  {:type :fail :body body :status 500 :error :server-error})
                 (catch java.net.SocketTimeoutException _
                   (error "Write Timed out")
                   {:type :info :error :timeout}) ; we don't know if the write took place or not
