@@ -153,7 +153,7 @@
                                  :socket-timeout 5000      ;; in milliseconds
                                  :connection-timeout 5000  ;; in milliseconds
                                  })]
-                                 {:type :ok :body (:body response)})
+                  {:type :ok :body (:body response)})
                 (catch [:status 404] {:keys [request-time body]}
                   {:type :ok :body nil}) ; this is only thrown when the node knows it doesn't have a leader/quorum                                 
                 (catch [:status 503] {:keys [request-time body]}
@@ -208,25 +208,25 @@
           :os   debian/os
           :db   (db "0.13.0-rc.11")
           :client (Client. nil)
-          :checker         (checker/compose {:perf (checker/perf)
-                                             :indep (independent/checker
-                                                     (checker/compose
-                                                      {:linear (checker/linearizable {:model     (model/register)
-                                                                                      :algorithm :linear})
-                                                       :timeline (timeline/html)}))})
-          :generator       (->> (independent/concurrent-generator
-                                 10
-                                 (range)
-                                 (fn [key] (->> (gen/mix [r w])
-                                                (gen/stagger (/ (:rate opts)))
-                                                (gen/limit (:ops-per-key opts)))))
-                                (gen/nemesis
-                                 (cycle [(gen/sleep 5)
-                                         {:type :info :f :start}
-                                         (gen/sleep 5)
-                                         {:type :info :f :stop}]))
-                                (gen/time-limit (:time-limit opts)))
-          :nemesis    (nemesis/partition-random-halves)}))
+          :checker (checker/compose {:perf (checker/perf)
+                                     :indep (independent/checker
+                                             (checker/compose
+                                              {:linear (checker/linearizable {:model     (model/register)
+                                                                              :algorithm :linear})
+                                               :timeline (timeline/html)}))})
+          :generator (->> (independent/concurrent-generator
+                           10
+                           (range)
+                           (fn [key] (->> (gen/mix [r w])
+                                          (gen/stagger (/ (:rate opts)))
+                                          (gen/limit (:ops-per-key opts)))))
+                          (gen/nemesis
+                           (cycle [(gen/sleep 5)
+                                   {:type :info :f :start}
+                                   (gen/sleep 5)
+                                   {:type :info :f :stop}]))
+                          (gen/time-limit (:time-limit opts)))
+          :nemesis (nemesis/partition-random-halves)}))
 
 (defn node-url
   "An HTTP url for connecting to a node on a particular port."
@@ -242,10 +242,10 @@
   "Handles command line arguments. Can either run a test, or a web server for
   browsing results."
   [& args]
-  (cli/run! (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
-            args))
-
-  ;; (cli/run! (merge (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
-  ;;                  (cli/serve-cmd))
+  ;; (cli/run! (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
   ;;           args))
+
+  (cli/run! (merge (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
+                   (cli/serve-cmd))
+            args))
 

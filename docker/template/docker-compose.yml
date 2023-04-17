@@ -57,7 +57,7 @@ services:
     env_file: ./secret/control.env
     ports:
       - "22"
-      - "8080"
+      - "8080:8080"
     networks:
       - jepsen
     volumes:
