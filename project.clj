@@ -7,7 +7,7 @@
                  [org.clojure/data.json "2.4.0"]
                  [org.clojure/core.match "1.0.1"]
                  [org.clojure/tools.logging "1.2.4"]
-                 [jepsen "0.2.7"]
+                 [jepsen "0.3.2"]
                  [clj-http "3.12.1"]
                  [cheshire "5.9.0"]]
   :main tremor.jepsen

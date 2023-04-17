@@ -98,7 +98,7 @@
     {:value nil} nil
     {:value _} (Long/parseLong (:value body))
     nil nil
-    _ (Long/parseLong (:value body)))
+    _ (Long/parseLong body))
   ;; (try
   ;;   (Long/parseLong body)
   ;;   (catch Exception _
@@ -121,6 +121,8 @@
                                                     :socket-timeout 5000
                                                     :connection-timeout 5000})]
                   {:type :ok :value (decode-body (:body response))})
+                (catch [:status 404] {:keys [request-time]}
+                  {:type :ok :value nil})
                 (catch [:status 503] {:keys [request-time body]}
                   (error "503 Service Unavailable" request-time body)
                   {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
@@ -152,6 +154,8 @@
                                  :connection-timeout 5000  ;; in milliseconds
                                  })]
                                  {:type :ok :body (:body response)})
+                (catch [:status 404] {:keys [request-time body]}
+                  {:type :ok :body nil}) ; this is only thrown when the node knows it doesn't have a leader/quorum                                 
                 (catch [:status 503] {:keys [request-time body]}
                   (error "503 Service Unavailable" request-time body)
                   {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
@@ -238,7 +242,10 @@
   "Handles command line arguments. Can either run a test, or a web server for
   browsing results."
   [& args]
-  (cli/run! (merge (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
-                   (cli/serve-cmd))
+  (cli/run! (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
             args))
+
+  ;; (cli/run! (merge (cli/single-test-cmd {:test-fn tremor-test :opt-spec cli-opts})
+  ;;                  (cli/serve-cmd))
+  ;;           args))
 

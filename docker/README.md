@@ -11,7 +11,7 @@ generate computers is *cloud native*.
 
 ## Quickstart
 
-Assuming you have docker-compose set up already, run:
+Assuming you have `docker compose` set up already, run:
 
 ```
 bin/up
@@ -38,4 +38,4 @@ docker exec -it jepsen-n1 bash
 
 During development, it's convenient to run with `--dev` option, which mounts `$JEPSEN_ROOT` dir as `/jepsen` on Jepsen control container.
 
-Run `./up.sh --help` for more info.
+Run `./bin/up --help` for more info.
