@@ -121,14 +121,17 @@
                                                     :socket-timeout 5000
                                                     :connection-timeout 5000})]
                   {:type :ok :value (decode-body (:body response))})
-                (catch [:status 404] {:keys [request-time]}
+                (catch [:status 404] {:keys []}
                   {:type :ok :value nil})
-                (catch [:status 503] {:keys [request-time body]}
-                  (error "503 Service Unavailable" request-time body)
-                  {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch [:status 500] {:keys [request-time body]}
                   (error "500 Internal Server Error" request-time body)
-                  {:type :fail :body body :status 500 :error :server-error})
+                  {:type :fail :body body :status 500 :error :server-error}) ; this is only thrown when the node knows it doesn't have a leader/quorum
+                (catch [:status 503] {:keys [request-time body]}
+                  (error "503 Service Unavailable" request-time body)
+                  {:type :fail :body body :status 503 :error :no-quorum})
+                (catch [:status 504] {:keys [request-time body]}
+                  (error "505 Gateway Timeout" request-time body)
+                  {:type :fail :body body :status 504 :error :no-quorum})
                 (catch java.net.SocketTimeoutException _
                   (error "Write Timed out")
                   {:type :info :error :timeout}) ; we don't know if the write took place or not
@@ -156,12 +159,15 @@
                   {:type :ok :body (:body response)})
                 (catch [:status 404] {:keys [request-time body]}
                   {:type :ok :body nil}) ; this is only thrown when the node knows it doesn't have a leader/quorum                                 
-                (catch [:status 503] {:keys [request-time body]}
-                  (error "503 Service Unavailable" request-time body)
-                  {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch [:status 500] {:keys [request-time body]}
                   (error "500 Internal Server Error" request-time body)
                   {:type :fail :body body :status 500 :error :server-error})
+                (catch [:status 503] {:keys [request-time body]}
+                  (error "503 Service Unavailable" request-time body)
+                  {:type :fail :body body :status 503 :error :no-quorum}) ; this is only thrown when the node knows it doesn't have a leader/quorum
+                (catch [:status 504] {:keys [request-time body]}
+                  (error "504 Gateway Timeout" request-time body)
+                  {:type :fail :body body :status 504 :error :network-error}) ; this is only thrown when the node knows it doesn't have a leader/quorum
                 (catch java.net.SocketTimeoutException _
                   (error "Write Timed out")
                   {:type :info :error :timeout}) ; we don't know if the write took place or not
@@ -206,7 +212,7 @@
          {:pure-generators true
           :name "tremor"
           :os   debian/os
-          :db   (db "0.13.0-rc.11")
+          :db   (db "0.13.0-rc.16")
           :client (Client. nil)
           :checker (checker/compose {:perf (checker/perf)
                                      :indep (independent/checker
